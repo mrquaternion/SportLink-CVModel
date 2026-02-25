@@ -1,3 +1,3 @@
 # SportLink-CVModel
 
-This is a repo for the Computer Vision model that SportLink is using for UGC.
+This repository contains the FastAPI service and computer vision pipeline used by SportLink to validate and process user-submitted images (UGC).
