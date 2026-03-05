@@ -6,7 +6,6 @@ import uuid
 from .inference import infer
 from .exif_check import check, CheckException
 
-
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
 from torch import nn
@@ -24,32 +23,43 @@ BASE_MODEL = BASE_DIR / 'yolov8n-cls.pt'
 router = APIRouter()
 MAX_IMAGES_PER_INFRASTRUCTURE = 3
 
-client = storage.Client()
-bucket = client.bucket('sportlink-b061c.firebasestorage.app')
-
-# ============== Init the model once ==============
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-state_dict = torch.load(WEIGHTS_PATH, map_location=device)
-
-classifier_key = next((k for k in state_dict.keys() if k.endswith('linear.weight')), None)
-if classifier_key is None:
-    raise KeyError('Could not find classifier linear.weight in saved state_dict.')
-
-num_classes = state_dict[classifier_key].shape[0]
-
-yolo = YOLO(BASE_MODEL)
-model = yolo.model
-
-in_features = model.model[-1].linear.in_features
-model.model[-1].linear = nn.Linear(in_features, num_classes)
-
-model.load_state_dict(state_dict, strict=True)
-model.to(device)
-model.eval()
-# =================================================
+_bucket = None
+_model = None
+_device = None
 
 class ResponseBody(BaseModel):
     message: str
+
+
+def get_bucket():
+    global _bucket
+    if _bucket is None:
+        client = storage.Client()
+        _bucket = client.bucket('sportlink-b061c.firebasestorage.app')
+    return _bucket
+
+
+def get_model_and_device():
+    global _model, _device
+    if _model is None:
+        _device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        state_dict = torch.load(WEIGHTS_PATH, map_location=_device)
+        classifier_key = next((k for k in state_dict.keys() if k.endswith('linear.weight')), None)
+        if classifier_key is None:
+            raise KeyError('Could not find classifier linear.weight in saved state_dict.')
+
+        num_classes = state_dict[classifier_key].shape[0]
+        yolo = YOLO(BASE_MODEL)
+        model = yolo.model
+        in_features = model.model[-1].linear.in_features
+        model.model[-1].linear = nn.Linear(in_features, num_classes)
+        model.load_state_dict(state_dict, strict=True)
+        model.to(_device)
+        model.eval()
+        _model = model
+
+    return _model, _device
+
 
 @router.post("")
 async def predict(
@@ -62,6 +72,7 @@ async def predict(
 
     exif_data = json.loads(exif)
     infrastructure_data = json.loads(infrastructure)
+    model, device = get_model_and_device()
 
     conf, label = infer(
         imageData=imageData, 
@@ -96,6 +107,7 @@ async def predict(
 
 
 def save(file_bytes, infra_id, date):
+    bucket = get_bucket()
     prefix = f"infrastructures/{infra_id}/"
     existing_count = sum(1 for _ in bucket.list_blobs(prefix=prefix, max_results=MAX_IMAGES_PER_INFRASTRUCTURE + 1))
     if existing_count >= MAX_IMAGES_PER_INFRASTRUCTURE:

@@ -1,11 +1,12 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from . import smokeTest, validation
+import os
 
-import debugpy
-
-debugpy.listen(('0.0.0.0', 5678))
-# debugpy.wait_for_client()
+if os.getenv('ENABLE_DEBUGPY') == '1':
+    import debugpy
+    debugpy.listen(('0.0.0.0', 5678))
+    # debugpy.wait_for_client()
 
 app = FastAPI()
 

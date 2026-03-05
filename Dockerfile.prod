@@ -20,5 +20,5 @@ COPY ./src ./src
 
 EXPOSE 4000
 
-# Start the server
-CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "4000", "--proxy-headers"]
+# Start the server (Cloud Run injects PORT env var)
+CMD ["sh", "-c", "uvicorn src.main:app --host 0.0.0.0 --port ${PORT:-4000} --proxy-headers"]
