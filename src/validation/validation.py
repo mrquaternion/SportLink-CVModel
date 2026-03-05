@@ -1,15 +1,11 @@
-import torch
 import json
 import io
 import uuid
 
-from .inference import infer
 from .exif_check import check, CheckException
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from pydantic import BaseModel
-from torch import nn
-from ultralytics import YOLO
 from pathlib import Path
 from google.cloud import storage
 
@@ -42,6 +38,10 @@ def get_bucket():
 def get_model_and_device():
     global _model, _device
     if _model is None:
+        import torch
+        from torch import nn
+        from ultralytics import YOLO
+
         _device = 'cuda' if torch.cuda.is_available() else 'cpu'
         state_dict = torch.load(WEIGHTS_PATH, map_location=_device)
         classifier_key = next((k for k in state_dict.keys() if k.endswith('linear.weight')), None)
@@ -67,6 +67,8 @@ async def predict(
     exif: str = Form(...), # (latitude, longitude, date)
     infrastructure: str = Form(...) # (id, sport, latitude, longitude)
 ) -> ResponseBody:
+    from .inference import infer
+
     contents = await file.read()
     imageData = io.BytesIO(contents)
 
