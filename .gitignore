@@ -5,5 +5,4 @@ __pycache__/
 
 # exclude the data preparation
 CVModel-Data_Preparation/
-src/smokeTest/
 src/test/
