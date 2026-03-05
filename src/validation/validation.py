@@ -1,0 +1,112 @@
+import torch
+import json
+import io
+import uuid
+
+from .inference import infer
+from .exif_check import check, CheckException
+
+
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
+from pydantic import BaseModel
+from torch import nn
+from ultralytics import YOLO
+from pathlib import Path
+from google.cloud import storage
+
+
+# ================================================
+BASE_DIR = Path(__file__).resolve().parents[1]
+WEIGHTS_PATH = BASE_DIR / 'best_model.pt'
+BASE_MODEL = BASE_DIR / 'yolov8n-cls.pt'
+# ================================================
+
+router = APIRouter()
+MAX_IMAGES_PER_INFRASTRUCTURE = 3
+
+client = storage.Client()
+bucket = client.bucket('sportlink-b061c.firebasestorage.app')
+
+# ============== Init the model once ==============
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+state_dict = torch.load(WEIGHTS_PATH, map_location=device)
+
+classifier_key = next((k for k in state_dict.keys() if k.endswith('linear.weight')), None)
+if classifier_key is None:
+    raise KeyError('Could not find classifier linear.weight in saved state_dict.')
+
+num_classes = state_dict[classifier_key].shape[0]
+
+yolo = YOLO(BASE_MODEL)
+model = yolo.model
+
+in_features = model.model[-1].linear.in_features
+model.model[-1].linear = nn.Linear(in_features, num_classes)
+
+model.load_state_dict(state_dict, strict=True)
+model.to(device)
+model.eval()
+# =================================================
+
+class ResponseBody(BaseModel):
+    message: str
+
+@router.post("")
+async def predict(
+    file: UploadFile = File(...), # image
+    exif: str = Form(...), # (latitude, longitude, date)
+    infrastructure: str = Form(...) # (id, sport, latitude, longitude)
+) -> ResponseBody:
+    contents = await file.read()
+    imageData = io.BytesIO(contents)
+
+    exif_data = json.loads(exif)
+    infrastructure_data = json.loads(infrastructure)
+
+    conf, label = infer(
+        imageData=imageData, 
+        model=model,
+        device=device
+    )
+
+    try:
+        check(
+            confidence=conf,
+            label=label,
+            exif=exif_data,
+            infrastructure=infrastructure_data
+        )
+    except CheckException as e:
+        raise HTTPException(status_code=400, detail=e.error.value)
+
+    try: 
+        save(
+            file_bytes=contents,
+            infra_id=infrastructure_data['infra_id'],
+            date=exif_data['date_taken']
+        )
+    except ValueError as e:
+        if str(e).startswith('max_images_reached_for_infrastructure:'):
+            raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f'failed_to_save_image: {e}')
+
+    return {'message': '✅ Image uploaded!'}
+
+
+def save(file_bytes, infra_id, date):
+    prefix = f"infrastructures/{infra_id}/"
+    existing_count = sum(1 for _ in bucket.list_blobs(prefix=prefix, max_results=MAX_IMAGES_PER_INFRASTRUCTURE + 1))
+    if existing_count >= MAX_IMAGES_PER_INFRASTRUCTURE:
+        raise ValueError(f"max_images_reached_for_infrastructure:{infra_id}")
+
+    unique_id = str(uuid.uuid4())
+    path = f"{prefix}{unique_id}_{date}.jpg"
+
+    blob = bucket.blob(path)
+
+    blob.upload_from_file(
+        io.BytesIO(file_bytes),
+        content_type='image/jpeg'
+    )

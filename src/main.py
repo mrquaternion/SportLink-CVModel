@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from . import smokeTest
+from . import smokeTest, validation
 
 import debugpy
 
@@ -22,6 +22,7 @@ app.add_middleware(
 )
 
 app.include_router(smokeTest.router, prefix='/smoke-test')
+app.include_router(validation.router, prefix='/validation')
 
 # Define the API endpoints
 @app.get('/')
@@ -29,4 +30,3 @@ def health():
     return {
         'message': 'OK'
     }
-
