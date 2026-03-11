@@ -18,7 +18,12 @@ def check(confidence, label, exif, infrastructure):
         pass
     
     if label != infrastructure['sport']:
-        raise CheckException(CheckError.INVALID_PREDICTION)
+        raise CheckException(
+            CheckError.INVALID_PREDICTION,
+            prediction=label,
+            target=infrastructure['sport'],
+            confidence=confidence,
+        )
         
 
 def further_than_100m(exif, infrastructure):
@@ -34,11 +39,23 @@ class CheckError(Enum):
     MISSING_EXIF_DATA = 'missing_exif_data'
     MISSING_INFRASTRUCTURE_DATA = 'missing_infrastructure_data'
     TOO_FAR_FROM_INFRASTRUCTURE = 'too_far_from_infrastructure'
-    INVALID_PREDICTION = 'invalid_prediction'
     LOW_CONFIDENCE = 'low_confidence'
+    INVALID_PREDICTION = 'invalid_prediction'
 
 
 class CheckException(Exception):
-    def __init__(self, error: CheckError):
+    def __init__(self, error: CheckError, prediction=None, target=None, confidence=None):
         self.error = error
+        self.prediction = prediction
+        self.target = target
+        self.confidence = confidence
         super().__init__(error.value)
+
+    def __str__(self):
+        base = self.error.value
+        if self.prediction is not None or self.target is not None or self.confidence is not None:
+            return (
+                f"{base} "
+                f"(prediction={self.prediction}, target={self.target}, confidence={self.confidence})"
+            )
+        return base

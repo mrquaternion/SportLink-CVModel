@@ -25,7 +25,7 @@ def infer(imageData, model, device):
         probs = torch.softmax(logits, dim=1)
         confidence, label_int = torch.max(probs, dim=1)
 
-    idx_to_label = {
+    """ idx_to_label = {
         0: 'football', 
         1: 'baseball', 
         2: 'soccer', 
@@ -34,6 +34,16 @@ def infer(imageData, model, device):
         5: 'petanque', 
         6: 'volleyball', 
         7: 'tennis'
+    } """
+
+    idx_to_label = {
+        0: 'baseball', 
+        1: 'soccer', 
+        2: 'pingpong', 
+        3: 'basketball', 
+        4: 'petanque', 
+        5: 'volleyball', 
+        6: 'tennis'
     }
 
     return confidence.item(), idx_to_label.get(label_int.item())

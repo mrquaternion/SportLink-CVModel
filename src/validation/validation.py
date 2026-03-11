@@ -63,9 +63,9 @@ def get_model_and_device():
 
 @router.post("")
 async def predict(
-    file: UploadFile = File(...), # image
-    exif: str = Form(...), # (latitude, longitude, date)
-    infrastructure: str = Form(...) # (id, sport, latitude, longitude)
+    file: UploadFile = File(...), 
+    exif: str = Form(...),
+    infrastructure: str = Form(...)
 ) -> ResponseBody:
     from .inference import infer
 
@@ -81,6 +81,7 @@ async def predict(
         model=model,
         device=device
     )
+    print(f'inference: label={label}, confidence={conf:.4f}')
 
     try:
         check(
